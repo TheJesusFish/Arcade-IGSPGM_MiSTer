@@ -81,7 +81,7 @@ TickResult SimCore::TickOneCycle()
 {
     mTotalTicks++;
 
-    mSDRAM->UpdateChannel64(0, 1, mTop->sdr_addr, mTop->sdr_req, mTop->sdr_rw, mTop->sdr_be, mTop->sdr_data, &mTop->sdr_q, &mTop->sdr_ack);
+    mSDRAM->UpdateChannel64(0, mTop->sdr_addr, mTop->sdr_req, mTop->sdr_rw, mTop->sdr_be, mTop->sdr_data, &mTop->sdr_q, &mTop->sdr_ack);
     mVideo->Clock(mTop->ce_pixel != 0, mTop->hblank != 0, mTop->vblank != 0, mTop->red, mTop->green, mTop->blue);
 
     mDDRMemory->Clock(mTop->ddr_addr, mTop->ddr_wdata, mTop->ddr_rdata, mTop->ddr_read, mTop->ddr_write, mTop->ddr_busy,

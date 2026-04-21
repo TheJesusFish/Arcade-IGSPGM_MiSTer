@@ -282,11 +282,19 @@ PGM pgm_inst(
 );
 
 reg sdr_active;
+reg sdr_refresh;
 reg [2:0] sdr_active_ch;
+reg [2:0] sdr_dly_count;
 
 always_ff @(posedge clk) begin
-    if (sdr_active) begin
-        if (sdr_req == sdr_ack) begin
+    sdr_dly_count <= sdr_dly_count + 1;
+
+    if (sdr_refresh) begin
+        if (sdr_dly_count == 3) begin
+            sdr_refresh <= 0;
+        end
+    end else if (sdr_active) begin
+        if (sdr_req == sdr_ack && sdr_dly_count == 4) begin
             case(sdr_active_ch)
             0: begin
                 sdr_cpu_ack <= sdr_cpu_req;
@@ -313,7 +321,14 @@ always_ff @(posedge clk) begin
             sdr_active <= 0;
         end
     end else begin
-        if (sdr_scn0_req != sdr_scn0_ack) begin
+        sdr_dly_count <= 0;
+        if (sdr_audio_req != sdr_audio_ack) begin
+            sdr_rw <= 1;
+            sdr_addr <= sdr_audio_addr;
+            sdr_req <= ~sdr_req;
+            sdr_active <= 1;
+            sdr_active_ch <= 3;
+        end else if (sdr_scn0_req != sdr_scn0_ack) begin
             sdr_rw <= 1;
             sdr_addr <= sdr_scn0_addr;
             sdr_req <= ~sdr_req;
@@ -325,12 +340,6 @@ always_ff @(posedge clk) begin
             sdr_req <= ~sdr_req;
             sdr_active <= 1;
             sdr_active_ch <= 2;
-        end else if (sdr_audio_req != sdr_audio_ack) begin
-            sdr_rw <= 1;
-            sdr_addr <= sdr_audio_addr;
-            sdr_req <= ~sdr_req;
-            sdr_active <= 1;
-            sdr_active_ch <= 3;
         end else if (sdr_cpu_req != sdr_cpu_ack) begin
             sdr_rw <= 1;
             sdr_addr <= sdr_cpu_addr;
@@ -345,6 +354,8 @@ always_ff @(posedge clk) begin
             sdr_req <= ~sdr_req;
             sdr_active <= 1;
             sdr_active_ch <= 4;
+        end else begin
+            sdr_refresh <= 0;
         end
     end
 end

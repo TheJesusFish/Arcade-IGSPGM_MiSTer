@@ -44,9 +44,8 @@ reg [7:0] tile_addr;
 reg [15:0] tile_code;
 reg [7:0] tile_attrib;
 
-wire flip_x = tile_attrib[6];
-wire flip_y = tile_attrib[7];
-wire [4:0] palette = tile_attrib[5:1];
+reg flip_x;
+reg [4:0] palette;
 
 assign vram_addr = { vram_row_addr, tile_addr };
 
@@ -95,12 +94,7 @@ always_ff @(posedge clk) begin
             READ3: begin
                 tile_attrib[7:0] <= vram_din;
                 tile_addr <= tile_addr + 1;
-                read_state <= ROM_REQ;
-            end
-            ROM_REQ: begin
-                rom_address <= { 3'd0, tile_code, flip_y ? ~y[2:0] : y[2:0], 2'd0 };
-                rom_read <= 1;
-                read_state <= ROM_WAIT;
+                read_state <= rom_read ? ROM_WAIT : ROM_REQ;
             end
             ROM_WAIT: begin
                 if (rom_ready) begin
@@ -113,10 +107,17 @@ always_ff @(posedge clk) begin
                     if (buffer_idx == 56) begin
                         read_state <= DONE;
                     end else begin
-                        read_state <= READ0;
+                        read_state <= ROM_REQ;
                     end
                     buffer_idx <= buffer_idx + 1;
                 end
+            end
+            ROM_REQ: begin
+                rom_address <= { 3'd0, tile_code, tile_attrib[7] ? ~y[2:0] : y[2:0], 2'd0 };
+                rom_read <= 1;
+                read_state <= READ0;
+                flip_x <= tile_attrib[6];
+                palette <= tile_attrib[5:1];
             end
             DONE: begin end
             default: read_state <= DONE;

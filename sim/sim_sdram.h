@@ -84,15 +84,10 @@ class SimSDRAM : public MemoryInterface
         }
     }
 
-    void UpdateChannel64(int ch, int dly, uint32_t addr, uint8_t req, uint8_t rw, uint8_t be, uint64_t din, uint64_t *dout, uint8_t *ack)
+    void UpdateChannel64(int ch, uint32_t addr, uint8_t req, uint8_t rw, uint8_t be, uint64_t din, uint64_t *dout, uint8_t *ack)
     {
         if (req == *ack)
             return;
-
-        mDelay[ch]--;
-        if (mDelay[ch] > 0)
-            return;
-        mDelay[ch] = rand() % dly;
 
         addr &= mMask;
         addr &= 0xfffffffe;
