@@ -98,6 +98,7 @@ static void init()
     tile = &VRAM->bg[1 + ( 3 * 64)];
 }
 
+uint16_t attrib_test;
 static void update()
 {
     igs023_wait_vblank();
@@ -111,6 +112,7 @@ static void update()
     gui_u16_func("Y", IGS023_BG_Y_GET, IGS023_BG_Y_SET);
     if (gui_u8("SX", &sx, 0, 0x1f)) IGS023_BG_CTRL_SET(( IGS023_BG_CTRL_GET() & 0xffe0 ) | ( sx & 0x1f ));
     if (gui_u8("SY", &sy, 0, 0x1f)) IGS023_BG_CTRL_SET(( IGS023_BG_CTRL_GET() & 0xfc1f ) | (( sy & 0x1f ) << 5));
+    gui_bits16("ATTRIB", &attrib_test);
     gui_toggle("ANIMATE", &animate);
     gui_end();
 

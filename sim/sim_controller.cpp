@@ -13,6 +13,7 @@
 #include "sim_hierarchy.h"
 #include "sim_state.h"
 #include "sim_video.h"
+#include "testrom_gui.h"
 
 #include "PGM.h"
 #include "PGM___024root.h"
@@ -691,6 +692,75 @@ ControllerResult<ScreenshotResult> SimController::SaveScreenshot(const std::stri
     ScreenshotResult result;
     result.mPath = path;
     return ControllerResult<ScreenshotResult>::Success(result);
+}
+
+ControllerResult<GuiStateResult> SimController::GetGuiState() const
+{
+    auto initResult = EnsureInitialized();
+    if (!initResult.ok)
+    {
+        return ControllerResult<GuiStateResult>::Failure(initResult.errorCode, initResult.errorMessage);
+    }
+
+    GuiStateResult result;
+    TestRomGuiState guiState = GetTestRomGuiWindow().GetState();
+    result.mAvailable = guiState.mAvailable;
+    result.mAddress = guiState.mAddress;
+    result.mLastSyncTicks = guiState.mLastSyncTicks;
+    result.mEntries.reserve(guiState.mEntries.size());
+    for (const auto &entry : guiState.mEntries)
+    {
+        GuiEntryState out;
+        out.mIndex = entry.mIndex;
+        out.mLabel = entry.mLabel;
+        out.mType = entry.mType;
+        out.mTypeName = TestRomGuiWindow::TypeName(entry.mType);
+        out.mValue = entry.mValue;
+        out.mOverrideValue = entry.mOverrideValue;
+        result.mEntries.push_back(std::move(out));
+    }
+
+    return ControllerResult<GuiStateResult>::Success(result);
+}
+
+ControllerResult<GuiOverrideResult> SimController::SetGuiOverrideByIndex(uint32_t index, uint16_t value, bool pulse)
+{
+    auto initResult = EnsureInitialized();
+    if (!initResult.ok)
+    {
+        return ControllerResult<GuiOverrideResult>::Failure(initResult.errorCode, initResult.errorMessage);
+    }
+
+    bool applied = false;
+    std::string error;
+    if (!GetTestRomGuiWindow().SetOverrideByIndex(index, value, pulse, &applied, &error))
+    {
+        return ControllerResult<GuiOverrideResult>::Failure("gui_unavailable", error);
+    }
+
+    GuiOverrideResult result;
+    result.mApplied = applied;
+    return ControllerResult<GuiOverrideResult>::Success(result);
+}
+
+ControllerResult<GuiOverrideResult> SimController::SetGuiOverrideByLabel(const std::string &label, uint16_t value, bool pulse)
+{
+    auto initResult = EnsureInitialized();
+    if (!initResult.ok)
+    {
+        return ControllerResult<GuiOverrideResult>::Failure(initResult.errorCode, initResult.errorMessage);
+    }
+
+    bool applied = false;
+    std::string error;
+    if (!GetTestRomGuiWindow().SetOverrideByLabel(label, value, pulse, &applied, &error))
+    {
+        return ControllerResult<GuiOverrideResult>::Failure("gui_unavailable", error);
+    }
+
+    GuiOverrideResult result;
+    result.mApplied = applied;
+    return ControllerResult<GuiOverrideResult>::Success(result);
 }
 
 ControllerResult<SignalReadResult> SimController::ReadSignalValue(const std::string &signal) const

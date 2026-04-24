@@ -10,6 +10,7 @@
 #include "sim_ddr.h"
 #include "sim_video.h"
 #include "sim_audio_capture.h"
+#include "testrom_gui.h"
 #include "gfx_cache.h"
 #include "m68k.h"
 
@@ -18,6 +19,11 @@
 
 // Global instance
 SimCore gSimCore;
+
+namespace
+{
+bool gPrevVblank = false;
+}
 
 // SimCore implementation
 SimCore::SimCore()
@@ -60,6 +66,8 @@ void SimCore::Init()
 
     mGfxCache = std::make_unique<GfxCache>();
     mAudioCapture = std::make_unique<SimAudioCapture>();
+    GetTestRomGuiWindow().Reset();
+    gPrevVblank = false;
 
     SetMemory(MemoryRegion::WORK_RAM, UNIQUE_MEMORY_16B(work_ram, 128 * 1024));
     SetMemory(MemoryRegion::AUDIO_RAM, UNIQUE_MEMORY_16B(aram, 64 * 1024));
@@ -108,6 +116,13 @@ TickResult SimCore::TickOneCycle()
                             static_cast<int16_t>(mTop->rootp->PGM_SIGNAL(ics2115_audio_left)),
                             static_cast<int16_t>(mTop->rootp->PGM_SIGNAL(ics2115_audio_right)));
     }
+
+    const bool vblank = mTop->vblank != 0;
+    if (vblank && !gPrevVblank)
+    {
+        GetTestRomGuiWindow().TickVblank();
+    }
+    gPrevVblank = vblank;
 
     if (mSimulationWpSet && mTop->rootp->PGM_SIGNAL(cpu_word_addr) == mSimulationWpAddr)
     {
@@ -192,6 +207,8 @@ void SimCore::Shutdown()
     mDDRMemory.reset();
     mVideo.reset();
     mSignalWatchpointCallback = nullptr;
+    GetTestRomGuiWindow().Reset();
+    gPrevVblank = false;
 }
 
 void SimCore::SetSignalWatchpointCallback(std::function<bool()> callback)

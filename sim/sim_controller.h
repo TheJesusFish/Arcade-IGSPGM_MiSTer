@@ -113,6 +113,29 @@ struct ScreenshotResult
     std::string mPath;
 };
 
+struct GuiEntryState
+{
+    uint32_t mIndex = 0;
+    std::string mLabel;
+    uint8_t mType = 0;
+    std::string mTypeName;
+    uint16_t mValue = 0;
+    uint16_t mOverrideValue = 0;
+};
+
+struct GuiStateResult
+{
+    bool mAvailable = false;
+    uint32_t mAddress = 0x0A00;
+    uint64_t mLastSyncTicks = 0;
+    std::vector<GuiEntryState> mEntries;
+};
+
+struct GuiOverrideResult
+{
+    bool mApplied = false;
+};
+
 struct StateListResult
 {
     std::vector<std::string> mStates;
@@ -190,6 +213,9 @@ class SimController
     ControllerResult<EmptyResult> StartAudioCapture(const std::string &filename);
     ControllerResult<EmptyResult> StopAudioCapture();
     ControllerResult<ScreenshotResult> SaveScreenshot(const std::string &path);
+    ControllerResult<GuiStateResult> GetGuiState() const;
+    ControllerResult<GuiOverrideResult> SetGuiOverrideByIndex(uint32_t index, uint16_t value, bool pulse = false);
+    ControllerResult<GuiOverrideResult> SetGuiOverrideByLabel(const std::string &label, uint16_t value, bool pulse = false);
 
   private:
     bool mInitialized = false;

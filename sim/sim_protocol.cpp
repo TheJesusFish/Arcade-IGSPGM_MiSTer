@@ -948,6 +948,84 @@ std::string SimProtocol::HandleLine(const std::string &line)
         auto result = mController.SaveScreenshot(path);
         return SerializeJson(WrapControllerResult(id, result, JsonValue::Object({{"path", JsonValue::String(result.value.mPath)}})));
     }
+    if (method == "gui.get_state")
+    {
+        auto result = mController.GetGuiState();
+        if (!result.ok)
+            return SerializeJson(MakeErrorResponse(id, result.errorCode, result.errorMessage));
+
+        std::vector<JsonValue> entries;
+        for (const auto &entry : result.value.mEntries)
+        {
+            entries.push_back(JsonValue::Object({
+                {"index", JsonValue::Number(entry.mIndex)},
+                {"label", JsonValue::String(entry.mLabel)},
+                {"type", JsonValue::Number(entry.mType)},
+                {"type_name", JsonValue::String(entry.mTypeName)},
+                {"value", JsonValue::Number(entry.mValue)},
+                {"override_value", JsonValue::Number(entry.mOverrideValue)},
+            }));
+        }
+
+        return SerializeJson(MakeSuccessResponse(id, JsonValue::Object({
+            {"available", JsonValue::Bool(result.value.mAvailable)},
+            {"address", JsonValue::Number(result.value.mAddress)},
+            {"last_sync_ticks", JsonValue::Number(result.value.mLastSyncTicks)},
+            {"entries", JsonValue::Array(std::move(entries))},
+        })));
+    }
+    if (method == "gui.set_override")
+    {
+        uint64_t value = 0;
+        if (!RequireObjectField(params, "value", field, error) || !RequireNumber(*field, "value", value, error))
+            return SerializeJson(MakeErrorResponse(id, "bad_request", error));
+
+        ControllerResult<GuiOverrideResult> result;
+        if (const JsonValue *indexField = FindObjectField(params, "index"))
+        {
+            uint64_t index = 0;
+            if (!RequireNumber(*indexField, "index", index, error))
+                return SerializeJson(MakeErrorResponse(id, "bad_request", error));
+            result = mController.SetGuiOverrideByIndex(static_cast<uint32_t>(index), static_cast<uint16_t>(value), false);
+        }
+        else if (const JsonValue *labelField = FindObjectField(params, "label"))
+        {
+            std::string label;
+            if (!RequireString(*labelField, "label", label, error))
+                return SerializeJson(MakeErrorResponse(id, "bad_request", error));
+            result = mController.SetGuiOverrideByLabel(label, static_cast<uint16_t>(value), false);
+        }
+        else
+        {
+            return SerializeJson(MakeErrorResponse(id, "bad_request", "gui.set_override requires index or label"));
+        }
+
+        return SerializeJson(WrapControllerResult(id, result, JsonValue::Object({{"applied", JsonValue::Bool(result.value.mApplied)}})));
+    }
+    if (method == "gui.press_button")
+    {
+        ControllerResult<GuiOverrideResult> result;
+        if (const JsonValue *indexField = FindObjectField(params, "index"))
+        {
+            uint64_t index = 0;
+            if (!RequireNumber(*indexField, "index", index, error))
+                return SerializeJson(MakeErrorResponse(id, "bad_request", error));
+            result = mController.SetGuiOverrideByIndex(static_cast<uint32_t>(index), 1, true);
+        }
+        else if (const JsonValue *labelField = FindObjectField(params, "label"))
+        {
+            std::string label;
+            if (!RequireString(*labelField, "label", label, error))
+                return SerializeJson(MakeErrorResponse(id, "bad_request", error));
+            result = mController.SetGuiOverrideByLabel(label, 1, true);
+        }
+        else
+        {
+            return SerializeJson(MakeErrorResponse(id, "bad_request", "gui.press_button requires index or label"));
+        }
+
+        return SerializeJson(WrapControllerResult(id, result, JsonValue::Object({{"applied", JsonValue::Bool(result.value.mApplied)}})));
+    }
     if (method == "input.set_dipswitch_a")
     {
         uint64_t value = 0;

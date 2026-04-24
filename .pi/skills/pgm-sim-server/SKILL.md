@@ -1,6 +1,6 @@
 ---
 name: pgm-sim-server
-description: Control the MiSTer PGM simulator through its persistent stdio JSON server. Use when you need structured simulator automation, including loading games or MRAs, running until conditions, reading CPU state, reading or writing memory, saving states, tracing, taking screenshots, or starting/stopping binary audio capture.
+description: Control the MiSTer PGM simulator through its persistent stdio JSON server. Use when you need structured simulator automation, including loading games or MRAs, running until conditions, reading CPU state, reading or writing memory, saving states, tracing, taking screenshots, starting/stopping binary audio capture, or interacting with exported TestROM GUI state.
 ---
 
 # PGM Simulator Server
@@ -69,6 +69,9 @@ Primary reference:
 - `audio_capture.start`
 - `audio_capture.stop`
 - `video.screenshot`
+- `gui.get_state`
+- `gui.set_override`
+- `gui.press_button`
 - `input.set_dipswitch_a`
 - `input.set_dipswitch_b`
 
@@ -123,5 +126,7 @@ If a request fails:
 - Keep a single long-lived simulator process per investigation when possible.
 - Use `audio_capture.start` / `audio_capture.stop` for simulator audio packet capture; do not rely on old CLI or environment-based capture control.
 - Decode simulator packet captures with `python3 utils/capture_stream.py out.wav --input capture.bin`.
+- For test ROMs that export `gui_data` at `WORK_RAM[0x0a00]`, use `gui.get_state` to inspect the mirrored GUI and `gui.set_override` / `gui.press_button` to interact with it.
+- The TestROM GUI snapshot is only safe when both magic words match, `count > 0`, and `lock == 0`; the simulator checks this at vblank boundaries.
 - Signal lookup first checks built-in aliases, then tries VPI hierarchical lookup.
 - Default VPI builds may expose only a subset of internal signals; use `signal.list` to inspect availability.

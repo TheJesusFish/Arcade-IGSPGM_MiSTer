@@ -68,8 +68,9 @@ Typical session:
 2. `sim.load_game` or `sim.load_mra`
 3. optional `sim.reset`
 4. query and control methods like `sim.run_cycles`, `cpu.get_state`, `memory.read`
-5. optional `audio_capture.start` / `audio_capture.stop` when capturing simulator audio packets
-6. `sim.shutdown` when finished
+5. optional `gui.get_state`, `gui.set_override`, or `gui.press_button` when interacting with the exported TestROM GUI
+6. optional `audio_capture.start` / `audio_capture.stop` when capturing simulator audio packets
+7. `sim.shutdown` when finished
 
 ## Methods
 
@@ -687,6 +688,125 @@ Result:
 {"path":"frame.png"}
 ```
 
+## TestROM GUI mirroring
+
+When a test ROM exports `gui_data` in `WORK_RAM` at `0x0a00`, the simulator checks it on each vblank and mirrors it into an ImGui window named `TestROM GUI`.
+
+The data is considered safe to consume only if all of these are true:
+
+- `start_magic == 0xAB7D`
+- `end_magic == 0xAB7D`
+- `count > 0`
+- `count <= 32`
+- `lock == 0`
+
+When safe, the simulator copies the GUI data, renders an ImGui version of it, and writes changed `override_value` fields back into the work RAM copy.
+
+### `gui.get_state`
+
+Return the most recently mirrored TestROM GUI state.
+
+Request:
+
+```json
+{"id":21,"method":"gui.get_state","params":{}}
+```
+
+Result:
+
+```json
+{
+  "available": true,
+  "address": 2560,
+  "last_sync_ticks": 8384011,
+  "entries": [
+    {
+      "index": 0,
+      "label": "CTRL",
+      "type": 2,
+      "type_name": "u16",
+      "value": 13,
+      "override_value": 13
+    }
+  ]
+}
+```
+
+Fields:
+
+- `available` - whether a safe GUI snapshot is currently available
+- `address` - source address in `WORK_RAM` (`0x0a00` / `2560`)
+- `last_sync_ticks` - simulator tick when the last safe snapshot was mirrored
+- `entries` - copied GUI entries
+
+Entry fields:
+
+- `index` - entry index in the exported array
+- `label` - GUI label text
+- `type` - raw numeric type from test ROMs
+- `type_name` - decoded type name such as `u8`, `u16`, `bits16`, `bool`, or `button`
+- `value` - current value from the test ROM GUI entry
+- `override_value` - current override value mirrored by the simulator
+
+### `gui.set_override`
+
+Set an entry's `override_value` by `index` or `label`.
+
+Request by index:
+
+```json
+{"id":22,"method":"gui.set_override","params":{"index":0,"value":14}}
+```
+
+Request by label:
+
+```json
+{"id":23,"method":"gui.set_override","params":{"label":"CTRL","value":14}}
+```
+
+Params:
+
+- exactly one of `index` or `label`
+- `value` - 16-bit value to write to the entry's `override_value`
+
+Result:
+
+```json
+{"applied":true}
+```
+
+Notes:
+
+- `applied=true` means the write was applied immediately to a currently safe GUI snapshot
+- if the GUI is temporarily unavailable, the request fails with `gui_unavailable`
+
+### `gui.press_button`
+
+Pulse a button entry by setting its `override_value` to `1` and then automatically returning it to `0` on the next safe GUI sync.
+
+Request by label:
+
+```json
+{"id":24,"method":"gui.press_button","params":{"label":"BUTTON 1"}}
+```
+
+Request by index:
+
+```json
+{"id":25,"method":"gui.press_button","params":{"index":3}}
+```
+
+Result:
+
+```json
+{"applied":true}
+```
+
+Notes:
+
+- this only works for entries whose `type_name` is `button`
+- pulse writes for non-button entries fail with `gui_unavailable`
+
 ## Input control
 
 ### `input.set_dipswitch_a`
@@ -725,6 +845,7 @@ Common error codes include:
 - `save_state_failed`
 - `load_state_failed`
 - `screenshot_failed`
+- `gui_unavailable`
 
 ## Example session
 
@@ -747,8 +868,11 @@ Common error codes include:
 > {"id":6,"method":"audio_capture.stop","params":{}}
 < {"id":6,"ok":true,"result":{}}
 
-> {"id":7,"method":"cpu.get_state","params":{}}
-< {"id":7,"ok":true,"result":{"pc":256,"registers":[...],"disasm":"..."}}
+> {"id":7,"method":"gui.get_state","params":{}}
+< {"id":7,"ok":true,"result":{"available":true,"address":2560,"last_sync_ticks":447980,"entries":[...]}}
+
+> {"id":8,"method":"cpu.get_state","params":{}}
+< {"id":8,"ok":true,"result":{"pc":256,"registers":[...],"disasm":"..."}}
 ```
 
 ## Agent usage guidance

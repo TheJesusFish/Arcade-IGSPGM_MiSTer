@@ -1,6 +1,37 @@
 #include "gui.h"
 #include "input.h"
 #include "tilemap.h"
+#include "util.h"
+
+#define GUI_TYPE_NULL 0
+#define GUI_TYPE_U8 1
+#define GUI_TYPE_U16 2
+#define GUI_TYPE_BITS16 3
+#define GUI_TYPE_BOOL 4
+#define GUI_TYPE_BUTTON 5
+
+typedef struct
+{
+    char label[15];
+    uint8_t type;
+    uint16_t value;
+    uint16_t override;
+} GUIEntry;
+
+typedef struct
+{
+    uint16_t start_magic;
+    uint16_t lock;
+    uint16_t count;
+
+    GUIEntry entries[32];
+
+    uint16_t end_magic;
+} GUIData;
+
+__attribute__ ((section(".gui_buffer"))) __attribute__((used))
+GUIData gui_data;
+
 
 static u16 active_id = 0;
 static u16 last_id = 0;
@@ -11,6 +42,8 @@ static u16 dirty_x, dirty_y;
 #define ACTIVE_COLOR 1
 #define INACTIVE_COLOR 0
 #define LABEL_COLOR 0
+
+#define MAGIC 0xAB7D
 
 static void end_element()
 {
@@ -41,6 +74,78 @@ static void no_label()
     text_cursor(cur_x + max_label_width + 2, cur_y);
 }
 
+static bool gui_entry(u8 type, const char *label, void *value)
+{
+    GUIEntry *entry = &gui_data.entries[gui_data.count];
+    gui_data.count++;
+    
+    if (strcmp(label, entry->label) || type != entry->type)
+    {
+        entry->type = type;
+        strncpy(entry->label, label, sizeof(entry->label));
+        switch(type)
+        {
+            case GUI_TYPE_BITS16:
+            case GUI_TYPE_U16:
+            case GUI_TYPE_BUTTON:
+                entry->value = entry->override = *(uint16_t *)value;
+                break;
+            case GUI_TYPE_U8:
+                entry->value = entry->override = *(uint8_t *)value;
+                break;
+            case GUI_TYPE_BOOL:
+                entry->value = entry->override = *(bool *)value;
+                break;
+            default:
+                entry->value = entry->override = 0;
+                break;
+        }
+    }
+    else
+    {
+        if( entry->value != entry->override )
+        {
+            switch(type)
+            {
+                case GUI_TYPE_BITS16:
+                case GUI_TYPE_U16:
+                case GUI_TYPE_BUTTON:
+                    *(uint16_t *)value = entry->value = entry->override;
+                    break;
+                case GUI_TYPE_U8:
+                    *(uint8_t *)value = entry->value = entry->override;
+                    entry->value = entry->override = *(uint8_t *)value;
+                    break;
+                case GUI_TYPE_BOOL:
+                    *(bool *)value = entry->value = entry->override;
+                    entry->value = entry->override = *(bool *)value;
+                    break;
+                default:
+                    break;
+            }
+            return true;
+        }
+
+        switch(type)
+        {
+            case GUI_TYPE_BITS16:
+            case GUI_TYPE_U16:
+            case GUI_TYPE_BUTTON:
+                entry->value = entry->override = *(uint16_t *)value;
+                break;
+            case GUI_TYPE_U8:
+                entry->value = entry->override = *(uint8_t *)value;
+                break;
+            case GUI_TYPE_BOOL:
+                entry->value = entry->override = *(bool *)value;
+                break;
+            default:
+                break;
+        }
+    }
+    return false;
+}
+
 void gui_begin(u16 x, u16 y)
 {
     cur_x = x;
@@ -48,6 +153,11 @@ void gui_begin(u16 x, u16 y)
     cur_id = 0;
     max_label_width = label_width;
     label_width = 0;
+
+    gui_data.start_magic = MAGIC;
+    gui_data.end_magic = MAGIC;
+    gui_data.count = 0;
+    gui_data.lock = 0xffff;
 
     text_clear(cur_x, cur_y, dirty_x - cur_x, dirty_y - cur_y);
 
@@ -69,14 +179,15 @@ void gui_begin(u16 x, u16 y)
 
 bool gui_button(const char *name)
 {
-    bool pressed = false;
+    uint16_t gui_value = 0;
+    bool pressed = gui_entry(GUI_TYPE_BUTTON, name, &gui_value) && gui_value;
     
     no_label();
     
     if (cur_id == active_id)
     {
         text_color(ACTIVE_COLOR);
-        pressed = input_pressed(BTN1);
+        pressed |= input_pressed(BTN1);
     }
     else
     {
@@ -91,13 +202,17 @@ bool gui_button(const char *name)
 
 bool gui_toggle(const char *label, bool *value)
 {
-    bool pressed = false;
+    bool pressed = gui_entry(GUI_TYPE_BOOL, label, value);
+
     with_label(label);
     if (cur_id == active_id)
     {
         text_color(ACTIVE_COLOR);
-        pressed = input_pressed(BTN1);
-        if (pressed) *value = !(*value);
+        if (input_pressed(BTN1))
+        {
+            *value = !(*value);
+            pressed = true;
+        }
     }
     else
     {
@@ -119,7 +234,7 @@ bool gui_toggle(const char *label, bool *value)
 
 bool gui_bits16(const char *label, uint16_t *value)
 {
-    bool pressed = false;
+    bool pressed = gui_entry(GUI_TYPE_BITS16, label, value);
     u8 idx = active_id & 0xff;
     u16 active_bit = 0;
     with_label(label);
@@ -170,7 +285,8 @@ bool gui_bits16_func(const char *label, u16 (*getter)(), void (*setter)(u16))
 
 bool gui_u16(const char *label, uint16_t *value)
 {
-    bool pressed = false;
+    bool pressed = gui_entry(GUI_TYPE_U16, label, value);
+
     u16 active_bit = 0;
     with_label(label);
     if (cur_id == active_id)
@@ -195,6 +311,7 @@ bool gui_u16(const char *label, uint16_t *value)
     textf("%04X", *value);
 
     end_element();
+
     return pressed;
 }
 
@@ -211,7 +328,8 @@ bool gui_u16_func(const char *label, u16 (*getter)(), void (*setter)(u16))
 
 bool gui_u8(const char *label, u8 *value, u8 min, u8 max)
 {
-    bool pressed = false;
+    bool pressed = gui_entry(GUI_TYPE_U8, label, value);
+
     u16 active_bit = 0;
     with_label(label);
     if (cur_id == active_id)
@@ -244,6 +362,7 @@ bool gui_u8(const char *label, u8 *value, u8 min, u8 max)
 void gui_end()
 {
     text_color(0);
+    gui_data.lock = 0x0000;
 }
 
 

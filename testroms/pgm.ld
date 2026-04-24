@@ -27,6 +27,7 @@ SECTIONS
     .bss (NOLOAD) :
     {
         KEEP(*(.sprite_buffer .sprite_buffer.*));
+        KEEP(*(.gui_buffer .gui_buffer.*));
         _sbss = . ;
         *(.bss .bss.*)
         *(COMMON)
