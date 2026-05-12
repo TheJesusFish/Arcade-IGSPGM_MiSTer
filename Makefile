@@ -42,6 +42,7 @@ mister/%: releases/% deploy.done
 
 mister: mister/PGM.mra
 mister/espgalbl: mister/espgalbl.mra
+mister/ketbl: mister/ketbl.mra
 
 mister/test:
 	$(MAKE) -j8 -C testroms TARGET=pgm_test mister

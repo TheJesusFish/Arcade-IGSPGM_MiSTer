@@ -188,7 +188,7 @@ module ics2115_osc
     // =========================================================================
     // FSM — registered data processing
     // =========================================================================
-    always_ff @(posedge clk or negedge reset_n) begin
+    always_ff @(posedge clk) begin
         if (!reset_n || clear) begin
             state         <= ST_IDLE;
             done          <= 1'b0;
