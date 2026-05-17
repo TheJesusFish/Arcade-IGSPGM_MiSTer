@@ -416,9 +416,11 @@ module ics2115_osc
                 ST_MIX: begin
                     // Contribute if vmode==0 OR voice is playing (spec §8.3)
                     if (vmode == 8'd0 || voice_playing) begin
-                        // >> 20 = >> (5 + VOLUME_BITS)
-                        audio_left  <= mix_l >>> 20;
-                        audio_right <= mix_r >>> 20;
+                        // MAME: >> 20 = >> (5 + VOLUME_BITS)
+                        // MJD_TODO: Changed to just 15, I don't think it is
+                        // adjusting my voice count here
+                        audio_left  <= mix_l >>> 15;
+                        audio_right <= mix_r >>> 15;
                     end else begin
                         audio_left  <= 24'sd0;
                         audio_right <= 24'sd0;
