@@ -1,6 +1,7 @@
-module IGS026_X(
+module IGS026_X #(parameter int SS_IDX = -1)(
     input clk,
     input reset,
+    input ss_restore,
 
     // CPU interface
     input [23:0] cpu_addr,
@@ -45,10 +46,20 @@ module IGS026_X(
     output logic ics2115_wr_n,
     output logic ics2115_rd_n,
     input logic ics2115_irq,
-    input logic ics2115_ready
+    input logic ics2115_ready,
+
+    ssbus_if.slave ssbus
 );
 
 reg [15:0] latch[8];
+
+localparam int SS_WORD_LATCH1 = 0;
+localparam int SS_WORD_LATCH2 = 1;
+localparam int SS_WORD_LATCH4 = 2;
+localparam int SS_WORD_LATCH5 = 3;
+localparam int SS_WORD_LATCH6 = 4;
+localparam int SS_WORD_MISC   = 5;
+localparam int SS_WORD_COUNT  = 6;
 
 wire io_access_n = cpu_cs_n | cpu_addr[16];
 wire ram_access_n = cpu_cs_n | ~cpu_addr[16];
@@ -59,12 +70,13 @@ wire z80_ics2115_access = ~z80_io_access_n && ~(|z80_addr[11:8]) && (~z80_rd_n |
 wire [15:0] z80_ctrl = latch[4];
 wire [15:0] z80_bus_ctrl = latch[5];
 wire z80_bus_requested = z80_bus_ctrl == 16'h45d3;
-wire z80_control_reset_n = ~z80_ctrl[0]; // TODO
+wire z80_control_reset_n = ~z80_ctrl[0]; // 0x5050 runs, 0xa659 halts/resets the Z80 during uploads
 wire z80_bus_disable = z80_bus_requested && (!z80_control_reset_n || !z80_busak_n);
+logic ics2115_reset_n_reg;
 
 assign z80_busrq_n = ~z80_bus_requested;
 assign z80_reset_n = z80_control_reset_n;
-assign ics2115_reset_n = z80_control_reset_n; // TODO
+assign ics2115_reset_n = ics2115_reset_n_reg;
 
 always_comb begin
     v3021_dout = cpu_din[0];
@@ -128,9 +140,43 @@ always_comb begin
 end
 
 always_ff @(posedge clk) begin
-    if (reset) begin
+    ssbus.setup(SS_IDX, SS_WORD_COUNT, 2);
+
+    if (reset || ss_restore) begin
+        latch[1] <= 16'd0;
+        latch[2] <= 16'd0;
+        latch[4] <= 16'd0;
+        latch[5] <= 16'd0;
+        latch[6] <= 16'd0;
         z80_nmi_n <= 1;
+        ics2115_reset_n_reg <= ss_restore;
     end else begin
+        ics2115_reset_n_reg <= 1'b1;
+        if (ssbus.access(SS_IDX)) begin
+            if (ssbus.write) begin
+                case (ssbus.addr)
+                    SS_WORD_LATCH1: latch[1] <= ssbus.data[15:0];
+                    SS_WORD_LATCH2: latch[2] <= ssbus.data[15:0];
+                    SS_WORD_LATCH4: latch[4] <= ssbus.data[15:0];
+                    SS_WORD_LATCH5: latch[5] <= ssbus.data[15:0];
+                    SS_WORD_LATCH6: latch[6] <= ssbus.data[15:0];
+                    SS_WORD_MISC:   z80_nmi_n <= ssbus.data[0];
+                    default: begin end
+                endcase
+                ssbus.write_ack(SS_IDX);
+            end else if (ssbus.read) begin
+                case (ssbus.addr)
+                    SS_WORD_LATCH1: ssbus.read_response(SS_IDX, {32'd0, 16'd0, latch[1]});
+                    SS_WORD_LATCH2: ssbus.read_response(SS_IDX, {32'd0, 16'd0, latch[2]});
+                    SS_WORD_LATCH4: ssbus.read_response(SS_IDX, {32'd0, 16'd0, latch[4]});
+                    SS_WORD_LATCH5: ssbus.read_response(SS_IDX, {32'd0, 16'd0, latch[5]});
+                    SS_WORD_LATCH6: ssbus.read_response(SS_IDX, {32'd0, 16'd0, latch[6]});
+                    SS_WORD_MISC:   ssbus.read_response(SS_IDX, {32'd0, 31'd0, z80_nmi_n});
+                    default:        ssbus.read_response(SS_IDX, 64'd0);
+                endcase
+            end
+        end
+
         if (~io_access_n) begin
             if (~cpu_rw & ~cpu_lds_n) begin
                 case(cpu_addr[3:0])
@@ -139,7 +185,12 @@ always_ff @(posedge clk) begin
                         z80_nmi_n <= 0;
                     end
                     4'h4: latch[2] <= cpu_din;
-                    4'h8: latch[4] <= cpu_din;
+                    4'h8: begin
+                        latch[4] <= cpu_din;
+                        // MJD-TODO: I don't like this
+                        if (cpu_din == 16'h5050)
+                            ics2115_reset_n_reg <= 1'b0;
+                    end
                     4'ha: latch[5] <= cpu_din;
                     4'hc: latch[6] <= cpu_din;
                     default: begin

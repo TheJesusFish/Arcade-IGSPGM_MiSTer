@@ -2,6 +2,7 @@
 #include "PGM.h"
 #include "sim_ddr.h"
 #include "sim_core.h"
+#include "PGM___024root.h"
 
 #include <dirent.h>
 #include <algorithm>
@@ -10,6 +11,156 @@
 #include <sys/types.h>
 #include <sstream>
 #include <iomanip>
+#include <cinttypes>
+#include <cstdio>
+#include <cstdlib>
+#include <functional>
+
+namespace
+{
+uint64_t GetEnvU64(const char *name, uint64_t defaultValue)
+{
+    const char *value = std::getenv(name);
+    if (!value || !*value)
+        return defaultValue;
+
+    char *end = nullptr;
+    uint64_t parsed = std::strtoull(value, &end, 0);
+    return end != value ? parsed : defaultValue;
+}
+
+const char *SaveStateStateName(uint8_t state)
+{
+    switch (state)
+    {
+    case 0: return "IDLE";
+    case 1: return "SAVE_WAIT_PAUSE";
+    case 2: return "SAVE_WAIT_IRQ";
+    case 3: return "SAVE_WAIT_WRITE";
+    case 4: return "SAVE_WAIT_IRQ_EXIT";
+    case 5: return "SAVE_WAIT_SSP_SAVE";
+    case 6: return "RESTORE_WAIT_PAUSE";
+    case 7: return "RESTORE_WAIT_READ";
+    case 8: return "RESTORE_HOLD_RESET";
+    case 9: return "RESTORE_WAIT_RESET";
+    default: return "UNKNOWN";
+    }
+}
+
+const char *MemoryStreamStateName(uint32_t state)
+{
+    switch (state)
+    {
+    case 0: return "IDLE";
+    case 1: return "READ_MEM_REQ";
+    case 2: return "READ_MEM_WAIT";
+    case 3: return "READ_STREAM";
+    case 4: return "WRITE_GATHER";
+    case 5: return "WRITE_MEM_REQ";
+    case 6: return "WRITE_MEM_FINAL_REQ";
+    case 7: return "WRITE_MEM_FINAL_WAIT";
+    case 8: return "WRITE_MEM_WAIT";
+    case 9: return "QUERY_GATHER_FIRST";
+    case 10: return "QUERY_GATHER_NEXT";
+    case 11: return "QUERY_GATHER_WAIT";
+    case 12: return "QUERY_SCATTER_WAIT";
+    case 13: return "READ_HEADER";
+    case 14: return "READ_HEADER_WAIT";
+    case 15: return "WRITE_HEADER";
+    case 16: return "WRITE_HEADER_WAIT";
+    default: return "UNKNOWN";
+    }
+}
+
+void PrintStateProgress(const char *op, const char *phase, PGM *top, uint64_t elapsedTicks, const char *prefix = "progress")
+{
+    auto *root = top->rootp;
+    const uint8_t ssState = top->ss_state_out;
+    const uint32_t streamState = root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__state;
+
+    std::fprintf(stderr,
+                 "[sim-state] %s %s: %s elapsed=%" PRIu64
+                 " ss=%s(%u) pause=%u paused=%u read=%u write=%u reset_cnt=%u"
+                 " ssp_save=0x%08x ssp_restore=0x%08x ics_ready=%u ics_busy=%u"
+                 " stream=%s(%u) is_reading=%u rd_req=%u wr_req=%u query=%u"
+                 " chunk_idx=%u chunk_sel=%u chunk_addr=0x%08x remaining=%u width=%u word=%u"
+                 " current=0x%08x end=0x%08x ddr_busy=%u ddr_read_done=%u\n",
+                 op,
+                 phase,
+                 prefix,
+                 elapsedTicks,
+                 SaveStateStateName(ssState),
+                 ssState,
+                 root->sim_top__DOT__pgm_inst__DOT__ss_pause,
+                 root->sim_top__DOT__pgm_inst__DOT__ss_paused,
+                 root->sim_top__DOT__pgm_inst__DOT__ss_read,
+                 root->sim_top__DOT__pgm_inst__DOT__ss_write,
+                 root->sim_top__DOT__pgm_inst__DOT__ss_reset_counter,
+                 root->sim_top__DOT__pgm_inst__DOT__ss_saved_ssp,
+                 root->sim_top__DOT__pgm_inst__DOT__ss_restore_ssp,
+                 root->sim_top__DOT__pgm_inst__DOT__ics2115_ss_ready,
+                 root->sim_top__DOT__pgm_inst__DOT__ics2115__DOT__ss_busy_local,
+                 MemoryStreamStateName(streamState),
+                 streamState,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__is_reading,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT____Vcellout__memory_stream__read_req,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT____Vcellout__memory_stream__write_req,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT____Vcellout__memory_stream__query_req,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__chunk_index,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__chunk_select,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT____Vcellout__memory_stream__chunk_address,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__chunk_remaining,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__chunk_width,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__word_counter,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__current_addr,
+                 root->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__end_addr,
+                 top->ddr_busy,
+                 top->ddr_read_complete);
+    std::fflush(stderr);
+}
+
+bool TickUntilStateCondition(PGM *top, const char *op, const char *phase, const std::function<bool()> &condition)
+{
+    const uint64_t timeoutTicks = GetEnvU64("PGM_STATE_TIMEOUT_TICKS", 20'000'000ull);
+    const uint64_t progressTicks = GetEnvU64("PGM_STATE_PROGRESS_TICKS", 500'000ull);
+    const uint64_t startTicks = gSimCore.GetTotalTicks();
+    uint64_t lastProgressTicks = startTicks;
+    uint8_t lastSsState = top->ss_state_out;
+
+    PrintStateProgress(op, phase, top, 0, "start");
+
+    while (!condition())
+    {
+        TickResult tickResult = gSimCore.Tick(1);
+        const uint64_t nowTicks = gSimCore.GetTotalTicks();
+        const uint64_t elapsedTicks = nowTicks - startTicks;
+        const uint8_t ssState = top->ss_state_out;
+        const bool changed = ssState != lastSsState;
+
+        if (tickResult.mReason != TickStopReason::COMPLETED)
+        {
+            PrintStateProgress(op, phase, top, elapsedTicks, "stopped");
+            return false;
+        }
+
+        if (changed || (nowTicks - lastProgressTicks) >= progressTicks)
+        {
+            PrintStateProgress(op, phase, top, elapsedTicks);
+            lastProgressTicks = nowTicks;
+            lastSsState = ssState;
+        }
+
+        if (elapsedTicks >= timeoutTicks)
+        {
+            PrintStateProgress(op, phase, top, elapsedTicks, "timeout");
+            return false;
+        }
+    }
+
+    PrintStateProgress(op, phase, top, gSimCore.GetTotalTicks() - startTicks, "done");
+    return true;
+}
+} // namespace
 
 SimState::SimState(PGM *top, SimDDR *memory, int offset, int size)
     : mTop(top), mMemory(memory), mOffset(offset), mSize(size), mGameName("unknown")
@@ -39,36 +190,60 @@ std::string SimState::GetStatePath(const char *filename)
 
 bool SimState::SaveState(const char *filename)
 {
+    std::string fullPath = GetStatePath(filename);
+    std::fprintf(stderr, "[sim-state] save begin: %s\n", fullPath.c_str());
+    std::fflush(stderr);
+
     mTop->ss_index = 0;
     mTop->ss_do_save = 1;
-    if (!gSimCore.TickUntil([&] { return mTop->ss_state_out != 0; }, 0).Succeeded())
+    if (!TickUntilStateCondition(mTop, "save", "request accepted", [&] { return mTop->ss_state_out != 0; }))
+    {
+        mTop->ss_do_save = 0;
         return false;
+    }
 
     mTop->ss_do_save = 0;
-    if (!gSimCore.TickUntil([&] { return mTop->ss_state_out == 0; }, 0).Succeeded())
+    if (!TickUntilStateCondition(mTop, "save", "state machine idle", [&] { return mTop->ss_state_out == 0; }))
         return false;
 
-    std::string fullPath = GetStatePath(filename);
-    mMemory->SaveData(fullPath.c_str(), mOffset, mSize);
+    if (!mMemory->SaveData(fullPath.c_str(), mOffset, mSize))
+        return false;
 
+    std::fprintf(stderr, "[sim-state] save complete: %s\n", fullPath.c_str());
+    std::fflush(stderr);
     return true;
 }
 
 bool SimState::RestoreState(const char *filename)
 {
     std::string fullPath = GetStatePath(filename);
-    mMemory->LoadData(fullPath.c_str(), mOffset,
-                        1); // Pass stride=1 explicitly
+    std::fprintf(stderr, "[sim-state] restore begin: %s\n", fullPath.c_str());
+    std::fflush(stderr);
+
+    struct stat st;
+    if (stat(fullPath.c_str(), &st) == 0)
+    {
+        std::fprintf(stderr, "[sim-state] restore file size: %lld bytes\n", static_cast<long long>(st.st_size));
+        std::fflush(stderr);
+    }
+
+    if (!mMemory->LoadData(fullPath.c_str(), mOffset, 1)) // Pass stride=1 explicitly
+        return false;
 
     mTop->ss_index = 0;
     mTop->ss_do_restore = 1;
-    if (!gSimCore.TickUntil([&] { return mTop->ss_state_out != 0; }, 0).Succeeded())
+    if (!TickUntilStateCondition(mTop, "restore", "request accepted", [&] { return mTop->ss_state_out != 0; }))
+    {
+        mTop->ss_do_restore = 0;
         return false;
+    }
 
     mTop->ss_do_restore = 0;
-    if (!gSimCore.TickUntil([&] { return mTop->ss_state_out == 0; }, 0).Succeeded())
+    if (!TickUntilStateCondition(mTop, "restore", "state machine idle", [&] { return mTop->ss_state_out == 0; }))
         return false;
 
+    std::fprintf(stderr, "[sim-state] restore complete: %s\n", fullPath.c_str());
+    std::fflush(stderr);
     return true;
 }
 

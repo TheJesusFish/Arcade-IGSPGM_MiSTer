@@ -724,7 +724,7 @@ wire [1:0] ics2115_addr;
 wire [7:0] ics2115_din, ics2115_dout;
 wire ics2115_cs_n, ics2115_rd_n, ics2115_wr_n;
 wire ics2115_irq, ics2115_ready;
-wire ics2115_reset_n;
+wire ics2115_reset_n /* verilator public_flat */;
 
 wire [22:0] ics2115_rom_addr /* verilator public_flat */;
 wire [15:0] ics2115_rom_q;
@@ -754,9 +754,10 @@ audio_rom_cache audio_rom_cache(
     .data_valid(ics2115_data_valid)
 );
 
-IGS026_X igs026_x(
+IGS026_X #(.SS_IDX(SSIDX_IGS026_X)) igs026_x(
     .clk,
     .reset,
+    .ss_restore(ss_do_restore),
 
     // CPU interface
     .cpu_addr(cpu_word_addr),
@@ -800,7 +801,9 @@ IGS026_X igs026_x(
     .ics2115_rd_n,
     .ics2115_wr_n,
     .ics2115_irq,
-    .ics2115_ready
+    .ics2115_ready,
+
+    .ssbus(ssb[SSIDX_IGS026_X])
 );
 
 pgm_asic3 #(.SS_IDX(SSIDX_ASIC3)) asic3(

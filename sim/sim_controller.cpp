@@ -458,6 +458,19 @@ ControllerResult<SignalListResult> SimController::ListSignals() const
     result.mSignals.push_back({"reset", 1, "alias", "builtin"});
     result.mSignals.push_back({"rom_load_busy", 1, "alias", "builtin"});
     result.mSignals.push_back({"ss_state_out", 32, "alias", "builtin"});
+    result.mSignals.push_back({"ss_pause", 1, "alias", "builtin"});
+    result.mSignals.push_back({"ss_paused", 1, "alias", "builtin"});
+    result.mSignals.push_back({"ss_read", 1, "alias", "builtin"});
+    result.mSignals.push_back({"ss_write", 1, "alias", "builtin"});
+    result.mSignals.push_back({"ss_stream_state", 32, "alias", "builtin"});
+    result.mSignals.push_back({"ss_stream_chunk_index", 8, "alias", "builtin"});
+    result.mSignals.push_back({"ss_stream_chunk_remaining", 32, "alias", "builtin"});
+    result.mSignals.push_back({"ss_stream_current_addr", 32, "alias", "builtin"});
+    result.mSignals.push_back({"ss_ics2115_ready", 1, "alias", "builtin"});
+    result.mSignals.push_back({"ss_ics2115_busy", 1, "alias", "builtin"});
+    result.mSignals.push_back({"igs026_latch4", 16, "alias", "builtin"});
+    result.mSignals.push_back({"z80_reset_n", 1, "alias", "builtin"});
+    result.mSignals.push_back({"ics2115_reset_n", 1, "alias", "builtin"});
 
     auto vpiResult = ListSignalsVpi();
     if (!vpiResult.ok)
@@ -769,7 +782,7 @@ ControllerResult<Ics2115DebugState> SimController::GetIcs2115DebugState() const
     result.mHostWrN = root->sim_top__DOT__pgm_inst__DOT__ics2115_wr_n != 0;
     result.mHostIrq = result.mIrqOn;
     result.mHostReady = root->sim_top__DOT__pgm_inst__DOT__ics2115__DOT__host_fifo_count < 16;
-    result.mResetN = root->sim_top__DOT__pgm_inst__DOT__z80_reset_n != 0;
+    result.mResetN = root->sim_top__DOT__pgm_inst__DOT__ics2115_reset_n != 0;
     result.mRomDataValid = root->sim_top__DOT__pgm_inst__DOT__ics2115_data_valid != 0;
     result.mRomAddr = root->sim_top__DOT__pgm_inst__DOT__ics2115_rom_addr;
     result.mRomData = root->sim_top__DOT__pgm_inst__DOT__ics2115_rom_q;
@@ -904,6 +917,63 @@ ControllerResult<SignalReadResult> SimController::ReadSignalValueBuiltin(const s
     {
         result.mValue = gSimCore.mTop->ss_state_out;
         result.mWidth = 32;
+    }
+    else if (signal == "ss_pause")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__ss_pause;
+    }
+    else if (signal == "ss_paused")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__ss_paused;
+    }
+    else if (signal == "ss_read")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__ss_read;
+    }
+    else if (signal == "ss_write")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__ss_write;
+    }
+    else if (signal == "ss_stream_state")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__state;
+        result.mWidth = 32;
+    }
+    else if (signal == "ss_stream_chunk_index")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__chunk_index;
+        result.mWidth = 8;
+    }
+    else if (signal == "ss_stream_chunk_remaining")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__chunk_remaining;
+        result.mWidth = 32;
+    }
+    else if (signal == "ss_stream_current_addr")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__save_state_data__DOT__memory_stream__DOT__current_addr;
+        result.mWidth = 32;
+    }
+    else if (signal == "ss_ics2115_ready")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__ics2115_ss_ready;
+    }
+    else if (signal == "ss_ics2115_busy")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__ics2115__DOT__ss_busy_local;
+    }
+    else if (signal == "igs026_latch4")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__igs026_x__DOT__latch[4];
+        result.mWidth = 16;
+    }
+    else if (signal == "z80_reset_n")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__z80_reset_n;
+    }
+    else if (signal == "ics2115_reset_n")
+    {
+        result.mValue = gSimCore.mTop->rootp->sim_top__DOT__pgm_inst__DOT__ics2115_reset_n;
     }
     else
     {
