@@ -456,6 +456,7 @@ always_ff @(posedge clk) begin
                 spr.brom_offset <= 0;
                 brom_req <= ~brom_req;
                 tmp_x <= 0;
+                spr.source_line <= 0;
                 spr.screen_line <= global_flip_y ? (10'd224 - spr_y - scaled_height(spr_scale_y, scale_pattern[spr_scale_y], spr_height))
                                                  : spr_y;
                 dma_state <= PRESCAN_INITIAL_BROM_WAIT;
